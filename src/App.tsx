@@ -67,6 +67,7 @@ export default function App() {
   const [videoUrl, setVideoUrl] = useState<string>("");
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [isGuestMode, setIsGuestMode] = useState<boolean>(false);
+  const [isPseudoFullscreen, setIsPseudoFullscreen] = useState<boolean>(false);
   
   // Media states
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -587,14 +588,69 @@ export default function App() {
     setSettings((prev) => ({ ...prev, theaterMode: !prev.theaterMode }));
   };
 
+  // Monitor native fullscreen exit to sync with Esc key / gesture
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const hasNativeFS = document.fullscreenElement || 
+                          (document as any).webkitFullscreenElement || 
+                          (document as any).mozFullScreenElement ||
+                          (document as any).msFullscreenElement;
+      if (!hasNativeFS) {
+        setIsPseudoFullscreen(false);
+      }
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+    document.addEventListener("MSFullscreenChange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
+    };
+  }, []);
+
   const handleFullscreenToggle = () => {
+    if (isPseudoFullscreen) {
+      setIsPseudoFullscreen(false);
+      return;
+    }
+
     if (!containerRef.current) return;
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
+
+    // Direct check if browser supports native requestFullscreen
+    const reqFS = containerRef.current.requestFullscreen || 
+                  (containerRef.current as any).webkitRequestFullscreen || 
+                  (containerRef.current as any).mozRequestFullScreen || 
+                  (containerRef.current as any).msRequestFullscreen;
+
+    const hasNativeFS = document.fullscreenElement || 
+                        (document as any).webkitFullscreenElement || 
+                        (document as any).mozFullScreenElement ||
+                        (document as any).msFullscreenElement;
+
+    if (hasNativeFS) {
+      const exitFS = document.exitFullscreen || 
+                     (document as any).webkitExitFullscreen || 
+                     (document as any).mozCancelFullScreen || 
+                     (document as any).msExitFullscreen;
+      if (exitFS) {
+        exitFS.call(document);
+      } else {
+        setIsPseudoFullscreen(false);
+      }
     } else {
-      containerRef.current.requestFullscreen().catch((err) => {
-        addToast("Trình duyệt chặn khởi đầu toàn màn hình: " + err.message, "error");
-      });
+      if (reqFS) {
+        reqFS.call(containerRef.current).catch((err) => {
+          console.warn("Native fullscreen failed, falling back to overlay: ", err);
+          setIsPseudoFullscreen(true);
+        });
+      } else {
+        // Fallback for iOS devices and standard sandbox restrictions that deny native full-screening
+        setIsPseudoFullscreen(true);
+        addToast("Bật chế độ tràn viền tối ưu cho thiết bị này!", "success");
+      }
     }
   };
 
@@ -637,6 +693,13 @@ export default function App() {
           e.preventDefault();
           handleFullscreenToggle();
           break;
+        case "Escape":
+          if (isPseudoFullscreen) {
+            e.preventDefault();
+            setIsPseudoFullscreen(false);
+            addToast("Đã ẩn chế độ tràn viền", "info");
+          }
+          break;
         default:
           break;
       }
@@ -646,7 +709,7 @@ export default function App() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isPlaying, activeVideoId, settings]);
+  }, [isPlaying, activeVideoId, settings, isPseudoFullscreen]);
 
   // Clipboard auto paste utility
   const handlePasteClipboard = async () => {
@@ -877,9 +940,11 @@ export default function App() {
               onMouseEnter={handlePlayerMouseEnter}
               onMouseLeave={handlePlayerMouseLeave}
               onTouchStart={handlePlayerTouchStart}
-              className={`relative rounded-2xl overflow-hidden border border-brand-border bg-black group select-none shadow-2xl shadow-black/80 transition-all duration-300 ${
-                !controlsVisible ? "cursor-none" : ""
-              }`}
+              className={`relative bg-black group select-none transition-all duration-300 flex flex-col justify-center ${
+                isPseudoFullscreen
+                  ? "fixed inset-0 z-[100] rounded-none border-none w-screen h-screen"
+                  : "rounded-2xl border border-brand-border shadow-2xl shadow-black/80"
+              } ${!controlsVisible ? "cursor-none" : ""}`}
             >
               {/* Reactive Beautiful Ambient Light */}
               {settings.ambientGlow && (
@@ -895,7 +960,7 @@ export default function App() {
               )}
 
               {/* Dynamic Interactive Stage */}
-              <div className="relative z-10 w-full overflow-hidden bg-black aspect-video">
+              <div className={`relative z-10 w-full overflow-hidden bg-black aspect-video ${isPseudoFullscreen ? "max-h-screen" : ""}`}>
                 
                 {/* Scaling dynamic crop element */}
                 <div
@@ -933,14 +998,14 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Float-HUD overlay controls (Appear on activity hover) */}
+                {/* Float-HUD overlay controls (Appear on activity hover, highly responsive padding for smaller/mobile views) */}
                 <div
-                  className={`absolute bottom-0 inset-x-0 z-30 bg-gradient-to-t from-black/95 via-black/80 to-transparent p-5 pt-16 flex flex-col gap-4.5 transition-all duration-350 ${
+                  className={`absolute bottom-0 inset-x-0 z-30 bg-gradient-to-t from-black/98 via-black/90 to-transparent p-3 sm:p-5 pt-12 sm:pt-16 flex flex-col gap-2.5 sm:gap-4 transition-all duration-350 ${
                     controlsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3 pointer-events-none"
                   }`}
                 >
                   {/* Slider Progress Area */}
-                  <div className="flex flex-col gap-1.5">
+                  <div className="flex flex-col gap-1 sm:gap-1.5">
                     <div
                       ref={progressBarRef}
                       onClick={handleSeek}
@@ -990,76 +1055,76 @@ export default function App() {
                     </div>
 
                     {/* Timeline Values Display */}
-                    <div className="flex justify-between items-center text-[11px] font-mono font-medium text-slate-400">
+                    <div className="flex justify-between items-center text-[10px] sm:text-[11px] font-mono font-medium text-slate-400">
                       <span>{formatTime(currTime)}</span>
                       <span>{formatTime(duration)}</span>
                     </div>
                   </div>
 
-                  {/* Operational Deck */}
-                  <div className="flex flex-wrap items-center justify-between gap-4">
+                  {/* Operational Deck - beautifully responsive layout */}
+                  <div className="flex flex-row items-center justify-between gap-1.5 sm:gap-4 w-full">
                     {/* Media buttons */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 sm:gap-2">
                       <button
                         onClick={togglePlay}
-                        className="size-11 rounded-xl bg-brand-primary text-white flex items-center justify-center hover:bg-brand-primary-hover active:scale-95 transition-all shadow-md shadow-brand-primary/20 cursor-pointer"
+                        className="size-8.5 sm:size-11 rounded-lg sm:rounded-xl bg-brand-primary text-white flex items-center justify-center hover:bg-brand-primary-hover active:scale-95 transition-all shadow-md shadow-brand-primary/20 cursor-pointer"
                       >
                         {isPlaying ? (
-                          <Pause className="size-5 fill-current" />
+                          <Pause className="size-4 sm:size-5 fill-current" />
                         ) : (
-                          <Play className="size-5 fill-current ml-0.5" />
+                          <Play className="size-4 sm:size-5 fill-current ml-0.5" />
                         )}
                       </button>
 
-                      <div className="h-6 w-px bg-white/10 mx-1.5" />
+                      <div className="h-5 sm:h-6 w-px bg-white/10 mx-1 sm:mx-1.5" />
 
                       {/* Rewind */}
                       <button
                         onClick={() => handleSkip(-10)}
                         title="Tua lùi 10s"
-                        className="size-9 rounded-lg bg-white/5 border border-white/5 text-slate-300 hover:text-white hover:bg-white/10 flex items-center justify-center active:scale-92 transition-all cursor-pointer text-xs"
+                        className="size-7.5 sm:size-9 rounded-md sm:rounded-lg bg-white/5 border border-white/5 text-slate-300 hover:text-white hover:bg-white/10 flex items-center justify-center active:scale-92 transition-all cursor-pointer text-[10px] sm:text-xs"
                       >
-                        <RotateCcw className="size-4 shrink-0" />
-                        <span className="text-[9px] font-bold ml-0.5 font-mono">10</span>
+                        <RotateCcw className="size-3.5 sm:size-4 shrink-0" />
+                        <span className="text-[8px] sm:text-[9px] font-bold ml-0.5 font-mono">10</span>
                       </button>
 
                       {/* Forward */}
                       <button
                         onClick={() => handleSkip(10)}
                         title="Tua tiến 10s"
-                        className="size-9 rounded-lg bg-white/5 border border-white/5 text-slate-300 hover:text-white hover:bg-white/10 flex items-center justify-center active:scale-92 transition-all cursor-pointer text-xs"
+                        className="size-7.5 sm:size-9 rounded-md sm:rounded-lg bg-white/5 border border-white/5 text-slate-300 hover:text-white hover:bg-white/10 flex items-center justify-center active:scale-92 transition-all cursor-pointer text-[10px] sm:text-xs"
                       >
-                        <RotateCcw className="size-4 shrink-0 rotate-180" />
-                        <span className="text-[9px] font-bold ml-0.5 font-mono">10</span>
+                        <RotateCcw className="size-3.5 sm:size-4 shrink-0 rotate-180" />
+                        <span className="text-[8px] sm:text-[9px] font-bold ml-0.5 font-mono">10</span>
                       </button>
 
                       {/* Loop */}
                       <button
                         onClick={toggleLoop}
                         title={settings.loop ? "Đóng lặp liên tiếp" : "Bật lặp liên tiếp"}
-                        className={`size-9 rounded-lg border flex items-center justify-center active:scale-92 transition-all cursor-pointer ${
+                        className={`size-7.5 sm:size-9 rounded-md sm:rounded-lg border flex items-center justify-center active:scale-92 transition-all cursor-pointer ${
                           settings.loop
                             ? "bg-brand-primary/20 border-brand-primary text-brand-primary shadow-sm"
                             : "bg-white/5 border-white/5 text-slate-400 hover:text-white hover:bg-white/10"
                         }`}
                       >
-                        <ListRestart className="size-4.5" />
+                        <ListRestart className="size-3.5 sm:size-4.5" />
                       </button>
                     </div>
 
-                    {/* Left Actions: Volume, Quality, Speed, Fullscreen */}
-                    <div className="flex items-center gap-3">
+                    {/* Right Actions: Volume, Quality, Speed, Fullscreen */}
+                    <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
                       {/* Quality selection dropdown */}
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-slate-500 font-bold uppercase">Chất Lượng</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase hidden md:inline">Chất Lượng</span>
                         <select
                           value={settings.quality}
                           onChange={(e) => setSettings((prev) => ({ ...prev, quality: e.target.value }))}
-                          className="h-8 rounded-lg bg-white/5 text-slate-100 text-xs border border-white/10 px-2 font-medium focus:outline-hidden cursor-pointer"
+                          className="h-7.5 sm:h-8 rounded-lg bg-white/5 text-slate-100 text-[10px] sm:text-xs border border-white/10 px-1.5 font-medium focus:outline-hidden cursor-pointer"
                         >
                           <option value="default" className="bg-[#121214]">Tự động</option>
-                          <option value="hd1080" className="bg-[#121214]">1080p Full-HD</option>
-                          <option value="hd720" className="bg-[#121214]">720p HD</option>
+                          <option value="hd1080" className="bg-[#121214]">1080p</option>
+                          <option value="hd720" className="bg-[#121214]">720p</option>
                           <option value="large" className="bg-[#121214]">480p</option>
                           <option value="medium" className="bg-[#121214]">360p</option>
                           <option value="small" className="bg-[#121214]">240p</option>
@@ -1067,42 +1132,37 @@ export default function App() {
                       </div>
 
                       {/* Speed selection list */}
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-slate-500 font-bold uppercase">Tốc độ</span>
-                        <div className="flex bg-white/5 border border-white/10 rounded-lg p-0.5">
-                          {[1, 1.25, 1.5, 2].map((s) => (
-                            <button
-                              key={s}
-                              onClick={() => changeSpeed(s)}
-                              className={`px-2 py-1 text-[11px] rounded-md font-semibold transition-all cursor-pointer ${
-                                settings.speed === s
-                                  ? "bg-brand-primary text-white"
-                                  : "text-slate-400 hover:text-slate-200"
-                              }`}
-                            >
-                              {s}x
-                            </button>
-                          ))}
-                        </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase hidden md:inline">Tốc độ</span>
+                        <select
+                          value={settings.speed}
+                          onChange={(e) => changeSpeed(parseFloat(e.target.value))}
+                          className="h-7.5 sm:h-8 rounded-lg bg-white/5 text-slate-100 text-[10px] sm:text-xs border border-white/10 px-1.5 font-medium focus:outline-hidden cursor-pointer"
+                        >
+                          <option value="1" className="bg-[#121214]">1x</option>
+                          <option value="1.25" className="bg-[#121214]">1.25x</option>
+                          <option value="1.5" className="bg-[#121214]">1.5x</option>
+                          <option value="2" className="bg-[#121214]">2x</option>
+                        </select>
                       </div>
 
-                      <div className="h-6 w-px bg-white/10" />
+                      <div className="h-5 sm:h-6 w-px bg-white/10 hidden sm:block" />
 
                       {/* Volume Area */}
-                      <div className="flex items-center gap-2 group/vol relative">
+                      <div className="flex items-center gap-1.5 group/vol relative">
                         <button
                           onClick={toggleMute}
-                          className="size-9 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-300 hover:text-white transition-colors cursor-pointer"
+                          className="size-7.5 sm:size-9 rounded-md sm:rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-300 hover:text-white transition-colors cursor-pointer"
                         >
                           {settings.muted || settings.volume === 0 ? (
-                            <VolumeX className="size-4.5 text-rose-400" />
+                            <VolumeX className="size-3.5 sm:size-4.5 text-rose-400" />
                           ) : (
-                            <Volume2 className="size-4.5" />
+                            <Volume2 className="size-3.5 sm:size-4.5" />
                           )}
                         </button>
                         
-                        {/* Horizontal volume scrubber */}
-                        <div className="w-18 flex items-center">
+                        {/* Horizontal volume scrubber (Only shows on laptop screens and above, mobile uses physical buttons) */}
+                        <div className="w-14 sm:w-18 hidden lg:flex items-center">
                           <input
                             type="range"
                             min="0"
@@ -1118,22 +1178,22 @@ export default function App() {
                       <button
                         onClick={toggleTheaterMode}
                         title={settings.theaterMode ? "Thoát chế độ rạp chiếu" : "Chế độ rạp chiếu rộng"}
-                        className={`size-9 rounded-lg border hidden md:flex items-center justify-center transition-all cursor-pointer ${
+                        className={`size-7.5 sm:size-9 rounded-md sm:rounded-lg border hidden md:flex items-center justify-center transition-all cursor-pointer ${
                           settings.theaterMode
                             ? "bg-brand-primary/20 border-brand-primary text-brand-primary"
                             : "bg-white/5 border-white/5 text-slate-400 hover:text-white"
                         }`}
                       >
-                        <AppWindow className="size-4.5" />
+                        <AppWindow className="size-4" />
                       </button>
 
                       {/* Fullscreen Button */}
                       <button
                         onClick={handleFullscreenToggle}
                         title="Toàn màn hình (F)"
-                        className="size-9 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-300 hover:text-white active:scale-93 transition-colors cursor-pointer"
+                        className="size-7.5 sm:size-9 rounded-md sm:rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-300 hover:text-white active:scale-93 transition-colors cursor-pointer"
                       >
-                        <Maximize className="size-4.5" />
+                        <Maximize className="size-3.5 sm:size-4.5" />
                       </button>
                     </div>
                   </div>
