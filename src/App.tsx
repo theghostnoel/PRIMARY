@@ -774,30 +774,16 @@ export default function App() {
           
           {/* Guest Mode Greeting Banner */}
           {isGuestMode && (
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-brand-surface border border-brand-border/60 p-4.5 rounded-2xl shadow-md gap-4">
-              <div className="flex items-center gap-3">
-                <div className="size-9.5 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
-                  <Sparkles className="size-5 animate-pulse" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
-                    Giao diện xem bảo mật (Secured Room)
-                  </h4>
-                  <p className="text-[10px] text-emerald-500 font-medium">Bảo mật tối cao • Không lọt link gốc • Chạy siêu nhẹ</p>
-                </div>
+            <div className="bg-brand-surface border border-brand-border/60 p-4 rounded-2xl shadow-md flex items-center gap-3">
+              <div className="size-9 ml-1 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 shrink-0">
+                <Sparkles className="size-4.5 animate-pulse" />
               </div>
-              
-              <button
-                onClick={() => {
-                  setIsGuestMode(false);
-                  // Clean URL query params using standard browser state
-                  window.history.pushState({}, "", window.location.pathname);
-                  addToast("Đã trở về không gian Quản trị (Admin Dashboard)", "success");
-                }}
-                className="w-full sm:w-auto px-4 py-2 rounded-xl border border-brand-primary/30 hover:border-brand-primary bg-brand-primary/10 hover:bg-brand-primary text-xs font-bold text-brand-primary hover:text-white transition-all cursor-pointer text-center"
-              >
-                Chế độ Admin
-              </button>
+              <div>
+                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                  Chế Độ Xem Bảo Mật (Vidunal Private Player)
+                </h4>
+                <p className="text-[10px] text-slate-400">Trình xem được mã hóa bảo mật tối cao • Không hiển thị liên kết nguồn • Trải nghiệm mượt mà không quảng cáo</p>
+              </div>
             </div>
           )}
 
