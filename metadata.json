@@ -1,0 +1,6 @@
+{
+  "name": "YouTube Private Player",
+  "description": "Trình phát video YouTube tối giản, mượt mà với giao diện điều khiển tùy biến cao, ẩn quảng cáo và gợi ý.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
